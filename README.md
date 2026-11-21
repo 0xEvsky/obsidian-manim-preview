@@ -83,14 +83,6 @@ Each code block has a format dropdown to choose output type:
 - **PNG** — Static last frame only
 - **WebM** — Web-optimized video with transparency support
 
-### Progress Indicator
-
-During rendering, a progress bar shows the current frame and percentage:
-
-```
-Rendering "CreateCircle"... ████████░░ 80%  Rendering frame 80/100 (80%)
-```
-
 ### Transparent Background
 
 Enable "Transparent Background" in settings (requires WebM or PNG format) for animations with alpha channel.
