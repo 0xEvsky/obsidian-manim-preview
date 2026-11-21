@@ -10,9 +10,13 @@ An Obsidian community plugin that integrates **Manim Community Edition** directl
 - 💾 **Smart Caching** — Caches renders by content hash for instant reloads
 - ⚙️ **Configurable Quality** — Low/Medium/High/4K quality settings
 - 🔧 **Custom Paths** — Configure Python and Manim executable paths
-- 📱 **Responsive Video Player** — Native HTML5 video with controls
+- 📱 **Responsive Media Player** — Native HTML5 video with controls, plus GIF/PNG support
 - 🎨 **Theme Aware** — Adapts to your Obsidian theme (light/dark)
 - 🔬 **Live Preview (Experimental)** — See previews while editing in Live Preview mode
+- 📊 **Progress Indicator** — Real-time render progress with percentage
+- 🖼️ **Multi-Format Export** — MP4, GIF, PNG (last frame), WebM
+- 💾 **Save Last Frame** — Optionally save final frame as PNG
+- 🌈 **Transparent Background** — Render with alpha channel (WebM/PNG)
 
 ## Installation
 
@@ -69,6 +73,27 @@ class CreateCircle(Scene):
 
 In **Reading View**, you'll see a "Render" button below the code block. Click it to generate the animation preview.
 
+### Format Selection
+
+Each code block has a format dropdown to choose output type:
+
+- **MP4** — Standard video (default)
+- **GIF** — Animated GIF for easy sharing
+- **PNG** — Static last frame only
+- **WebM** — Web-optimized video with transparency support
+
+### Progress Indicator
+
+During rendering, a progress bar shows the current frame and percentage:
+
+```
+Rendering "CreateCircle"... ████████░░ 80%  Rendering frame 80/100 (80%)
+```
+
+### Transparent Background
+
+Enable "Transparent Background" in settings (requires WebM or PNG format) for animations with alpha channel.
+
 ### Multiple Scenes
 
 If your code contains multiple Scene classes, the plugin will automatically detect them and render the first one. You can specify which scene to render by adding a comment at the top:
@@ -102,6 +127,9 @@ Open Settings → Community Plugins → Manim Preview to configure:
 |---------|-------------|---------|
 | **Python Executable** | Path to Python executable | `python` |
 | **Manim Executable** | Path to manim (or leave empty for `python -m manim`) | `manim` |
+| **Output Format** | Format for rendered output | `mp4` |
+| **Save Last Frame** | Save last frame as PNG | `false` |
+| **Transparent Background** | Render with alpha channel (WebM/PNG) | `false` |
 | **Auto Render** | Automatically render on code change | `true` |
 | **Debounce Delay** | Wait time before auto-render (ms) | `1500` |
 | **Render Quality** | Video quality preset | `low` (480p, 15fps) |
@@ -175,6 +203,13 @@ Open Settings → Community Plugins → Manim Preview to configure:
 - Use "Clear Manim render cache" command
 - Or manually delete `.obsidian/plugins/obsidian-manim-preview/cache/`
 
+### GIF/WebM/PNG Export Issues
+
+- **GIF**: Requires ImageMagick (`magick` command) for some Manim versions
+- **WebM**: Requires FFmpeg with VP8/VP9 support
+- **PNG**: Always works, no additional dependencies
+- **Transparent Background**: Only works with WebM or PNG format; enable in settings
+
 ## Development
 
 ### Project Structure
@@ -203,6 +238,7 @@ npm run dev      # Watch mode for development
 npm run build    # Production build
 npm run lint     # Run ESLint
 npm run test     # Run tests (Vitest)
+npm run test:ui  # Run tests with UI
 ```
 
 ### Live Preview Implementation
@@ -219,7 +255,7 @@ The Live Preview integration uses CodeMirror 6 ViewPlugin with block widgets:
 - [x] **Milestone 1** — Proof of Concept (Reading View rendering)
 - [x] **Milestone 2** — Usable Plugin (auto-render, scene selector, caching, Ctrl+Enter shortcut)
 - [x] **Milestone 3** — Live Preview Integration (CodeMirror 6 ViewPlugin with block widgets)
-- [ ] **Milestone 4** — Polish (theme-aware styling, keyboard shortcuts, GIF export, tests)
+- [x] **Milestone 4** — Polish (format selection, progress indicator, GIF/PNG/WebM export, transparent background, save last frame, unit tests, ESLint)
 
 ## Contributing
 
