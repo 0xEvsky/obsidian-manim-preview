@@ -19,6 +19,8 @@ export interface ManimSettings {
   cacheDir: string;
   /** Timeout for manim rendering in milliseconds */
   renderTimeoutMs: number;
+  /** Enable Live Preview integration (experimental) */
+  livePreview: boolean;
 }
 
 export interface ManimResult {
@@ -88,4 +90,5 @@ export const DEFAULT_SETTINGS: ManimSettings = {
   previewWidth: 640,
   cacheDir: '.obsidian/plugins/obsidian-manim-preview/cache',
   renderTimeoutMs: 120000,
+  livePreview: false, // Disabled by default (experimental)
 };

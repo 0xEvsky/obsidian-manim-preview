@@ -109,6 +109,18 @@ export class ManimSettingTab extends PluginSettingTab {
           await this.plugin.settingsManager.set('renderTimeoutMs', value);
         }));
 
+    // Live Preview toggle (experimental)
+    new Setting(containerEl)
+      .setName('Live Preview (Experimental)')
+      .setDesc('Show Manim previews in editing view (Live Preview). Requires reload.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settingsManager.get('livePreview'))
+        .onChange(async (value) => {
+          await this.plugin.settingsManager.set('livePreview', value);
+          // Refresh Live Preview extension
+          await this.plugin.refreshLivePreview();
+        }));
+
     // Test configuration button
     new Setting(containerEl)
       .setName('Test Configuration')

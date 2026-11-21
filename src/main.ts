@@ -1,14 +1,16 @@
-import { App, Plugin, PluginSettingTab, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Editor, MarkdownView } from 'obsidian';
 import { ManimSettings, DEFAULT_SETTINGS } from './types';
 import { SettingsManager } from './settings/Settings';
 import { ManimSettingTab } from './settings/SettingsTab';
 import { ManimExecutor } from './execution/ManimExecutor';
 import { ManimCodeBlockProcessor } from './reading-view/ManimCodeBlockProcessor';
+import { createManimViewPlugin } from './live-preview/ManimViewPlugin';
 
 export class ManimPlugin extends Plugin {
   settingsManager!: SettingsManager;
   executor!: ManimExecutor;
   codeBlockProcessor!: ManimCodeBlockProcessor;
+  livePreviewExtension: any = null;
 
   async onload(): Promise<void> {
     console.log('Loading Manim Preview plugin');
@@ -32,6 +34,9 @@ export class ManimPlugin extends Plugin {
     );
     this.codeBlockProcessor.register();
 
+    // Register Live Preview extension if enabled
+    this.registerLivePreview();
+
     // Register settings tab
     this.addSettingTab(new ManimSettingTab(this.app, this));
 
@@ -48,7 +53,44 @@ export class ManimPlugin extends Plugin {
       })
     );
 
+    // Watch for settings changes to re-register Live Preview
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        // Check if livePreview setting changed
+      })
+    );
+
     console.log('Manim Preview plugin loaded');
+  }
+
+  private registerLivePreview(): void {
+    const settings = this.settingsManager.getAll();
+    if (settings.livePreview) {
+      try {
+        this.livePreviewExtension = createManimViewPlugin(this.executor, settings);
+        this.registerEditorExtension(this.livePreviewExtension);
+        console.log('Manim Live Preview registered');
+      } catch (error) {
+        console.error('Failed to register Live Preview:', error);
+      }
+    }
+  }
+
+  /**
+   * Re-register Live Preview when settings change
+   */
+  async refreshLivePreview(): Promise<void> {
+    // Unregister old extension
+    if (this.livePreviewExtension) {
+      // Note: Obsidian doesn't provide a direct unregister for editor extensions
+      // The extension will be replaced on reload
+    }
+
+    // Register new extension
+    this.registerLivePreview();
+
+    // Note: User needs to reload for changes to take effect
+    new Notice('Live Preview setting changed. Please reload Obsidian (Ctrl+R) to apply.');
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
