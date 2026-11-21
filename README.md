@@ -4,19 +4,19 @@ An Obsidian community plugin that integrates **Manim Community Edition** directl
 
 ## Features
 
-- 🎬 **Inline Previews** — Render Manim animations directly in your notes (Reading View)
-- ⚡ **Auto-Render** — Automatically re-render when code changes (configurable debounce)
-- 🎯 **Scene Selection** — Automatically detects multiple Scene classes
-- 💾 **Smart Caching** — Caches renders by content hash for instant reloads
-- ⚙️ **Configurable Quality** — Low/Medium/High/4K quality settings
-- 🔧 **Custom Paths** — Configure Python and Manim executable paths
-- 📱 **Responsive Media Player** — Native HTML5 video with controls, plus GIF/PNG support
-- 🎨 **Theme Aware** — Adapts to your Obsidian theme (light/dark)
-- 🔬 **Live Preview (Experimental)** — See previews while editing in Live Preview mode
-- 📊 **Progress Indicator** — Real-time render progress with percentage
-- 🖼️ **Multi-Format Export** — MP4, GIF, PNG (last frame), WebM
-- 💾 **Save Last Frame** — Optionally save final frame as PNG
-- 🌈 **Transparent Background** — Render with alpha channel (WebM/PNG)
+- **Inline Previews** — Render Manim animations directly in your notes (Reading View)
+- **Auto-Render** — Automatically re-render when code changes (configurable debounce)
+- **Scene Selection** — Automatically detects multiple Scene classes
+- **Smart Caching** — Caches renders by content hash for instant reloads
+- **Configurable Quality** — Low/Medium/High/4K quality settings
+- **Custom Paths** — Configure Python and Manim executable paths
+- **Responsive Media Player** — Native HTML5 video with controls, plus GIF/PNG support
+- **Theme Aware** — Adapts to your Obsidian theme (light/dark)
+- **Live Preview (Experimental)** — See previews while editing in Live Preview mode
+- **Progress Indicator** — Real-time render progress with percentage
+- **Multi-Format Export** — MP4, GIF, PNG (last frame), WebM
+- **Save Last Frame** — Optionally save final frame as PNG
+- **Transparent Background** — Render with alpha channel (WebM/PNG)
 
 ## Installation
 
@@ -243,13 +243,7 @@ The Live Preview integration uses CodeMirror 6 ViewPlugin with block widgets:
 - Uses `Decoration.replace({ widget, block: true })` to replace code blocks
 - Widgets include scene selector, render button, and video player
 - Enabled via "Live Preview (Experimental)" setting (requires reload)
-
-## Roadmap
-
-- [x] **Milestone 1** — Proof of Concept (Reading View rendering)
-- [x] **Milestone 2** — Usable Plugin (auto-render, scene selector, caching, Ctrl+Enter shortcut)
-- [x] **Milestone 3** — Live Preview Integration (CodeMirror 6 ViewPlugin with block widgets)
-- [x] **Milestone 4** — Polish (format selection, progress indicator, GIF/PNG/WebM export, transparent background, save last frame, unit tests, ESLint)
+ Polish (format selection, progress indicator, GIF/PNG/WebM export, transparent background, save last frame, unit tests, ESLint)
 
 ## Contributing
 
