@@ -46,8 +46,9 @@ An Obsidian community plugin that integrates **Manim Community Edition** directl
 
 - **Python 3.8+** installed and in PATH (or configured in settings)
 - **Manim Community Edition** installed: `pip install manim`
-- **FFmpeg** installed and in PATH (required by Manim for video encoding)
 - **Obsidian 1.5.0+** (desktop only)
+
+> **Note:** Manim Community v0.19.0+ uses PyAV for video encoding, so **FFmpeg is no longer required** as a separate system dependency. If you're using an older Manim version (< v0.19.0), you'll still need FFmpeg installed.
 
 ### Windows Notes
 
@@ -186,11 +187,12 @@ Open Settings → Community Plugins → Manim Preview to configure:
 ### Render Fails / No Video Output
 
 1. Check the error message displayed below the code block
-2. Ensure FFmpeg is installed: `ffmpeg -version`
-3. Try rendering manually in terminal to see full output:
+2. Try rendering manually in terminal to see full output:
    ```bash
    manim -ql your_scene.py SceneName
    ```
+
+> **Note:** Manim v0.19.0+ uses PyAV for encoding. If you encounter encoding issues, ensure you have `pip install manim[ffmpeg]` for FFmpeg backend, or `pip install manim[pyav]` for PyAV backend (default).
 
 ### Video Doesn't Play
 
@@ -205,8 +207,8 @@ Open Settings → Community Plugins → Manim Preview to configure:
 
 ### GIF/WebM/PNG Export Issues
 
-- **GIF**: Requires ImageMagick (`magick` command) for some Manim versions
-- **WebM**: Requires FFmpeg with VP8/VP9 support
+- **GIF**: Works with PyAV (default in Manim v0.19.0+); for older versions may need ImageMagick
+- **WebM**: Works with PyAV backend (default); ensure `pip install manim[pyav]`
 - **PNG**: Always works, no additional dependencies
 - **Transparent Background**: Only works with WebM or PNG format; enable in settings
 
