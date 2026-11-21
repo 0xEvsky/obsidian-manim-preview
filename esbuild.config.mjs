@@ -1,6 +1,5 @@
 import esbuild from 'esbuild';
-import { copyFileSync, existsSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -21,13 +20,11 @@ const config = {
 
 if (isWatch) {
   const ctx = await esbuild.context(config);
-  await ctx.watch({
-    onRebuild(error, result) {
-      if (error) {
-        console.error('Build failed:', error);
-      } else {
-        console.log('Build succeeded');
-      }
+  await ctx.watch((error, result) => {
+    if (error) {
+      console.error('Build failed:', error);
+    } else {
+      console.log('Build succeeded');
     }
   });
   console.log('Watching for changes...');
