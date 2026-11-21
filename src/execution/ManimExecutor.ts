@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
-import { existsSync, mkdirSync, rmSync, readdirSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, readdirSync, copyFileSync, writeFileSync } from 'fs';
 import {
   ManimSettings,
   ManimResult,
@@ -11,6 +11,16 @@ import {
 } from '../types';
 
 const execFileAsync = promisify(execFile);
+
+// DataAdapter doesn't have getBasePath in types, but it exists at runtime
+interface DataAdapterWithBasePath {
+  getBasePath(): string;
+}
+
+// Type guard for adapter with getBasePath
+function hasGetBasePath(adapter: any): adapter is DataAdapterWithBasePath {
+  return typeof adapter.getBasePath === 'function';
+}
 
 /**
  * Simple hash function for cache keys
@@ -47,12 +57,10 @@ function extractSceneNames(source: string): string[] {
  * Find the output video file from manim render
  */
 function findOutputVideo(outputDir: string, sceneName: string, format: string): string | null {
-  const mediaDir = join(outputDir, 'media', format === 'gif' ? 'videos' : 'videos');
-
-  // For gif, check images directory
+  // When using --media_dir=outputDir, manim outputs to outputDir/videos/ (not outputDir/media/videos/)
   const searchDirs = format === 'gif'
-    ? [join(outputDir, 'media', 'videos'), join(outputDir, 'media', 'images')]
-    : [join(outputDir, 'media', 'videos')];
+    ? [join(outputDir, 'videos'), join(outputDir, 'images')]
+    : [join(outputDir, 'videos')];
 
   for (const mediaDir of searchDirs) {
     if (!existsSync(mediaDir)) continue;
@@ -73,13 +81,13 @@ function findOutputVideo(outputDir: string, sceneName: string, format: string): 
         }
       }
 
-      // Also check for any matching file in the scene directory
+      // Also check for any matching file in the scene directory (recursive)
       try {
         const files = readdirSync(join(mediaDir, sceneDir), { recursive: true });
         const ext = format === 'gif' ? '.gif' : format === 'png' ? '.png' : '.mp4';
-        const matchedFiles = files.filter(f => f.endsWith(ext));
+        const matchedFiles = files.filter(f => String(f).endsWith(ext));
         if (matchedFiles.length > 0) {
-          return join(mediaDir, sceneDir, matchedFiles[0]);
+          return join(mediaDir, sceneDir, String(matchedFiles[0]));
         }
       } catch {
         // Ignore
@@ -130,23 +138,37 @@ export class ManimExecutor {
   private pendingRenders: Map<string, AbortController> = new Map();
   private renderCache: Map<string, ManimResult> = new Map();
   private progressCallbacks: Map<string, (progress: number, message: string) => void> = new Map();
+  private cacheDirAbs: string;  // Absolute path for filesystem operations
+  private cacheDirRel: string;  // Relative path from vault root for adapter
 
   constructor(app: App, settings: ManimSettings) {
     this.app = app;
     this.settings = settings;
-    this.cacheDir = join(this.app.vault.adapter.getBasePath(), settings.cacheDir);
+    const adapter = this.app.vault.adapter;
+    if (!hasGetBasePath(adapter)) {
+      throw new Error('Vault adapter does not have getBasePath method');
+    }
+    const vaultBase = adapter.getBasePath();
+    this.cacheDirRel = settings.cacheDir;
+    this.cacheDirAbs = join(vaultBase, this.cacheDirRel);
     this.ensureCacheDir();
   }
 
   private ensureCacheDir(): void {
-    if (!existsSync(this.cacheDir)) {
-      mkdirSync(this.cacheDir, { recursive: true });
+    if (!existsSync(this.cacheDirAbs)) {
+      mkdirSync(this.cacheDirAbs, { recursive: true });
     }
   }
 
   updateSettings(settings: ManimSettings): void {
     this.settings = settings;
-    this.cacheDir = join(this.app.vault.adapter.getBasePath(), settings.cacheDir);
+    const adapter = this.app.vault.adapter;
+    if (!hasGetBasePath(adapter)) {
+      throw new Error('Vault adapter does not have getBasePath method');
+    }
+    const vaultBase = adapter.getBasePath();
+    this.cacheDirRel = settings.cacheDir;
+    this.cacheDirAbs = join(vaultBase, this.cacheDirRel);
     this.ensureCacheDir();
   }
 
@@ -218,7 +240,7 @@ export class ManimExecutor {
     }
 
     // Create temp file for the source
-    const tempDir = join(this.cacheDir, 'temp');
+    const tempDir = join(this.cacheDirAbs, 'temp');
     if (!existsSync(tempDir)) {
       mkdirSync(tempDir, { recursive: true });
     }
@@ -226,7 +248,7 @@ export class ManimExecutor {
     const tempFile = join(tempDir, `scene_${sourceHash}.py`);
 
     // Write source to temp file
-    await this.writeTempFile(tempFile, options.source);
+    this.writeTempFile(tempFile, options.source);
 
     try {
       // Build manim command
@@ -261,14 +283,15 @@ export class ManimExecutor {
 
       // Determine cached file extension
       const ext = format === 'gif' ? '.gif' : format === 'png' ? '.png' : '.mp4';
-      const cachedVideoPath = join(this.cacheDir, `${cacheKey}${ext}`);
-      copyFileSync(videoPath, cachedVideoPath);
+      const cachedVideoPathAbs = join(this.cacheDirAbs, `${cacheKey}${ext}`);
+      const cachedVideoPathRel = join(this.cacheDirRel, `${cacheKey}${ext}`);
+      copyFileSync(videoPath, cachedVideoPathAbs);
 
       return {
         id: cacheKey,
         source: options.source,
         sourceHash,
-        videoPath: cachedVideoPath,
+        videoPath: cachedVideoPathRel,
         sceneName,
         scenes,
         timestamp: Date.now(),
@@ -406,9 +429,8 @@ export class ManimExecutor {
   /**
    * Write source code to temp file
    */
-  private async writeTempFile(filePath: string, content: string): Promise<void> {
-    const { writeFile } = await import('fs/promises');
-    await writeFile(filePath, content, 'utf-8');
+  private writeTempFile(filePath: string, content: string): void {
+    writeFileSync(filePath, content, 'utf-8');
   }
 
   /**
@@ -416,8 +438,8 @@ export class ManimExecutor {
    */
   async clearCache(): Promise<void> {
     try {
-      if (existsSync(this.cacheDir)) {
-        rmSync(this.cacheDir, { recursive: true, force: true });
+      if (existsSync(this.cacheDirAbs)) {
+        rmSync(this.cacheDirAbs, { recursive: true, force: true });
         this.ensureCacheDir();
       }
       this.renderCache.clear();
@@ -429,8 +451,8 @@ export class ManimExecutor {
   /**
    * Get cached result if available
    */
-  getCached(sourceHash: string, sceneName: string | undefined, quality: string): ManimResult | undefined {
-    const cacheKey = `${sourceHash}-${sceneName || 'first'}-${quality}`;
+  getCached(sourceHash: string, sceneName: string | undefined, quality: string, format: string): ManimResult | undefined {
+    const cacheKey = `${sourceHash}-${sceneName || 'first'}-${quality}-${format}`;
     return this.renderCache.get(cacheKey);
   }
 
@@ -457,9 +479,9 @@ export class ManimExecutor {
   }
 
   /**
-   * Get the cache directory path
+   * Get the cache directory path (absolute, for manim --media_dir)
    */
   getCacheDir(): string {
-    return this.cacheDir;
+    return this.cacheDirAbs;
   }
 }

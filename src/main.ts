@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Editor, MarkdownView } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Editor, MarkdownView, Notice } from 'obsidian';
 import { ManimSettings, DEFAULT_SETTINGS } from './types';
 import { SettingsManager } from './settings/Settings';
 import { ManimSettingTab } from './settings/SettingsTab';
@@ -61,6 +61,13 @@ export class ManimPlugin extends Plugin {
     );
 
     console.log('Manim Preview plugin loaded');
+
+    // Update executor when settings change
+    this.settingsManager.onChange(() => {
+      this.executor.updateSettings(this.settingsManager.getAll());
+      // Also update code block processor settings
+      this.codeBlockProcessor.updateSettings(this.settingsManager.getAll());
+    });
   }
 
   private registerLivePreview(): void {
@@ -410,12 +417,12 @@ export class ManimPlugin extends Plugin {
       id: 'open-manim-settings',
       name: 'Open Manim Preview settings',
       callback: () => {
-        this.app.setting.openTabById('obsidian-manim-preview');
+        (this.app as any).setting?.openTabById('obsidian-manim-preview');
       },
     });
   }
 
-  private async renderAllBlocksInView(view: any): void {
+  private renderAllBlocksInView(view: any): void {
     if (!view || view.getViewType() !== 'markdown') {
       new Notice('Open a Markdown note to render Manim blocks');
       return;
@@ -466,3 +473,5 @@ export class ManimPlugin extends Plugin {
     return blocks;
   }
 }
+
+export default ManimPlugin;

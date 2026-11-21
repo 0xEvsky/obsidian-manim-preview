@@ -1,5 +1,6 @@
-import { ViewPlugin, EditorView, Decoration, DecorationSet, RangeSetBuilder, WidgetType } from '@codemirror/view';
+import { ViewPlugin, EditorView, Decoration, DecorationSet, ViewUpdate, WidgetType } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
+import { RangeSetBuilder } from '@codemirror/state';
 import { ManimExecutor } from '../execution/ManimExecutor';
 import { ManimSettings, ManimResult } from '../types';
 
@@ -180,23 +181,44 @@ class ManimLiveWidget extends WidgetType {
       // Video/Image state
       contentArea.style.cssText = 'margin-top: 0.5rem;';
 
-      const videoUrl = `file://${this.blockInfo.cachedResult.videoPath.replace(/\\/g, '/')}`;
-      const ext = this.blockInfo.cachedResult.videoPath.split('.').pop()?.toLowerCase();
+      const videoPath = this.blockInfo.cachedResult.videoPath;
+      const ext = videoPath.split('.').pop()?.toLowerCase();
+      const mimeType = ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' : ext === 'webm' ? 'video/webm' : 'video/mp4';
+
+      // Create placeholder element first, then load blob URL asynchronously
+      const loadMedia = async (element: HTMLVideoElement | HTMLImageElement) => {
+        try {
+          const adapter = this.executor.app.vault.adapter;
+          const arrayBuffer = await adapter.readBinary(videoPath);
+          const blob = new Blob([arrayBuffer], { type: mimeType });
+          const blobUrl = URL.createObjectURL(blob);
+          element.src = blobUrl;
+          // Clean up on remove
+          element.addEventListener('remove', () => URL.revokeObjectURL(blobUrl), { once: true });
+        } catch (error) {
+          console.error('Failed to load media:', error);
+          element.style.display = 'none';
+          const errorMsg = document.createElement('div');
+          errorMsg.style.cssText = 'color: var(--color-red, #e03e3e); font-size: 0.8rem;';
+          errorMsg.textContent = 'Failed to load video';
+          contentArea.appendChild(errorMsg);
+        }
+      };
 
       if (ext === 'gif' || ext === 'png') {
         const img = document.createElement('img');
         img.className = 'manim-preview-video';
-        img.src = videoUrl;
         img.alt = `Manim ${ext === 'gif' ? 'animation' : 'frame'}: ${this.blockInfo.cachedResult.sceneName || 'scene'}`;
         img.style.cssText = `max-width: ${this.settings.previewWidth}px; width: 100%; border-radius: var(--radius-s); background: var(--background-primary); box-shadow: var(--shadow-s);`;
         contentArea.appendChild(img);
+        loadMedia(img);
       } else {
         const video = document.createElement('video');
         video.className = 'manim-preview-video';
         video.controls = true;
-        video.src = videoUrl;
         video.style.cssText = `max-width: ${this.settings.previewWidth}px; width: 100%; border-radius: var(--radius-s); background: var(--background-primary); box-shadow: var(--shadow-s);`;
         contentArea.appendChild(video);
+        loadMedia(video);
       }
 
       if (this.blockInfo.cachedResult.sceneName) {
@@ -341,14 +363,13 @@ export function createManimViewPlugin(
       }
     }
 
-    private buildDecorations(view: EditorView): DecorationSet {
+    buildDecorations(view: EditorView): DecorationSet {
       const builder = new RangeSetBuilder<Decoration>();
-      const doc = view.state.doc;
 
-      syntaxTree(doc).iterate({
+      syntaxTree(view.state).iterate({
         enter: (node) => {
           if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
-            this.processCodeBlock(doc, node, builder);
+            this.processCodeBlock(view.state.doc, node, builder);
           }
         }
       });
@@ -356,7 +377,7 @@ export function createManimViewPlugin(
       return builder.finish();
     }
 
-    private processCodeBlock(doc: any, node: any, builder: RangeSetBuilder<Decoration>): void {
+    processCodeBlock(doc: { sliceString: (from: number, to: number) => string }, node: { name: string; from: number; to: number }, builder: RangeSetBuilder<Decoration>): void {
       const blockText = doc.sliceString(node.from, node.to);
       const lines = blockText.split('\n');
 
@@ -381,7 +402,7 @@ export function createManimViewPlugin(
 
       // Check cache
       const sourceHash = this.hashString(source);
-      const cached = executor.getCached(sourceHash, currentScene, settings.quality);
+      const cached = executor.getCached(sourceHash, currentScene, settings.quality, settings.format || 'mp4');
 
       // Store/update block info
       let blockInfo = blockInfos.get(blockId);
@@ -424,11 +445,11 @@ export function createManimViewPlugin(
         onFormatChange
       );
 
-      const deco = Decoration.replace({ widget, block: true }).range(node.from, node.to);
-      builder.add(deco);
+      const deco = Decoration.replace({ widget, block: true });
+      builder.add(node.from, node.to, deco);
     }
 
-    private extractSceneInfo(source: string): { scenes: string[]; preferredScene?: string } {
+    extractSceneInfo(source: string): { scenes: string[]; preferredScene?: string } {
       const scenes: string[] = [];
       let preferredScene: string | undefined;
 
@@ -449,7 +470,7 @@ export function createManimViewPlugin(
       return { scenes, preferredScene };
     }
 
-    private hashString(str: string): string {
+    hashString(str: string): string {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);

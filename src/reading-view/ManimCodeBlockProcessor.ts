@@ -101,10 +101,10 @@ export class ManimCodeBlockProcessor {
 
     // Check for cached result
     const sourceHash = this.hashString(source);
-    const cached = this.executor.getCached(sourceHash, initialScene, this.settings.quality);
+    const cached = this.executor.getCached(sourceHash, initialScene, this.settings.quality, this.settings.format);
 
     if (cached && cached.videoPath) {
-      this.showVideo(videoContainer, cached.videoPath, cached.sceneName);
+      await this.showVideo(videoContainer, cached.videoPath, cached.sceneName);
       videoContainer.style.display = 'block';
       renderButton.textContent = 'Re-render';
     }
@@ -204,10 +204,10 @@ export class ManimCodeBlockProcessor {
     format?: string
   ): Promise<void> {
     // Get the parent container (the manim-preview-container)
-    const parentContainer = renderButton.closest('.manim-preview-container') as HTMLElement;
+    const parentContainer = renderButton.closest('.manim-preview-container');
 
     // Create progress indicator
-    const progressContainer = parentContainer.createDiv({ cls: 'manim-progress-container' });
+    const progressContainer = parentContainer!.createDiv({ cls: 'manim-progress-container' });
     progressContainer.style.display = 'none';
     progressContainer.style.marginTop = '0.5rem';
     const progressBar = progressContainer.createDiv({ cls: 'manim-progress-bar' });
@@ -249,7 +249,7 @@ export class ManimCodeBlockProcessor {
         this.showError(errorContainer, result.error);
         statusEl.style.display = 'none';
       } else if (result.videoPath) {
-        this.showVideo(videoContainer, result.videoPath, result.sceneName);
+        await this.showVideo(videoContainer, result.videoPath, result.sceneName);
         videoContainer.style.display = 'block';
         statusEl.style.display = 'none';
         renderButton.textContent = 'Re-render';
@@ -294,12 +294,25 @@ export class ManimCodeBlockProcessor {
   /**
    * Display video/image player based on format
    */
-  private showVideo(container: HTMLElement, videoPath: string, sceneName?: string): void {
+  private async showVideo(container: HTMLElement, videoPath: string, sceneName?: string): Promise<void> {
     container.empty();
 
-    // Convert absolute path to file:// URL
-    const mediaUrl = `file://${videoPath.replace(/\\/g, '/')}`;
     const ext = videoPath.split('.').pop()?.toLowerCase();
+    const mimeType = ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' : ext === 'webm' ? 'video/webm' : 'video/mp4';
+
+    // Read file via vault adapter and create blob URL (file:// blocked by Electron for .obsidian folder)
+    const adapter = this.app.vault.adapter;
+    let mediaUrl: string;
+    try {
+      const arrayBuffer = await adapter.readBinary(videoPath);
+      const blob = new Blob([arrayBuffer], { type: mimeType });
+      mediaUrl = URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Failed to read video file:', error);
+      const errorEl = container.createDiv({ cls: 'manim-preview-error-container' });
+      errorEl.setText('Failed to load video');
+      return;
+    }
 
     if (ext === 'gif') {
       const img = container.createEl('img', {
@@ -310,7 +323,7 @@ export class ManimCodeBlockProcessor {
           alt: `Manim animation: ${sceneName || 'scene'}`,
         },
       });
-      img.setAttribute('controls', 'false'); // GIFs don't have native controls
+      img.setAttribute('controls', 'false');
     } else if (ext === 'png') {
       const img = container.createEl('img', {
         cls: 'manim-preview-video',
@@ -331,6 +344,8 @@ export class ManimCodeBlockProcessor {
           style: `max-width: ${this.settings.previewWidth}px; width: 100%;`,
         },
       });
+      // Clean up blob URL when video element is removed
+      video.addEventListener('remove', () => URL.revokeObjectURL(mediaUrl), { once: true });
     }
 
     // Add scene name label if available
@@ -359,7 +374,10 @@ export class ManimCodeBlockProcessor {
    */
   private generateBlockId(source: string, ctx: MarkdownPostProcessorContext): string {
     const file = ctx.sourcePath || 'unknown';
-    const line = ctx.getSectionInfo()?.lineStart || 0;
+    // getSectionInfo requires an element, but we don't have one here
+    // Use lineStart from section info if available, otherwise 0
+    const sectionInfo = ctx.getSectionInfo(document.body);
+    const line = sectionInfo?.lineStart || 0;
     return `${file}:${line}:${this.hashString(source).substring(0, 8)}`;
   }
 

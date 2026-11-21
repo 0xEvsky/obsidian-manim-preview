@@ -4,6 +4,7 @@ import { ManimSettings, DEFAULT_SETTINGS } from '../types';
 export class SettingsManager {
   private plugin: Plugin;
   private settings: ManimSettings;
+  private changeCallbacks: (() => void)[] = [];
 
   constructor(plugin: Plugin) {
     this.plugin = plugin;
@@ -20,6 +21,7 @@ export class SettingsManager {
 
   async save(): Promise<void> {
     await this.plugin.saveData(this.settings);
+    this.notifyChange();
   }
 
   getAll(): ManimSettings {
@@ -42,5 +44,19 @@ export class SettingsManager {
 
   reset(): void {
     this.settings = { ...DEFAULT_SETTINGS };
+  }
+
+  onChange(callback: () => void): () => void {
+    this.changeCallbacks.push(callback);
+    return () => {
+      const idx = this.changeCallbacks.indexOf(callback);
+      if (idx >= 0) this.changeCallbacks.splice(idx, 1);
+    };
+  }
+
+  private notifyChange(): void {
+    for (const cb of this.changeCallbacks) {
+      try { cb(); } catch { /* ignore */ }
+    }
   }
 }

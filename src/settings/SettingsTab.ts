@@ -48,8 +48,8 @@ export class ManimSettingTab extends PluginSettingTab {
         .addOption('png', 'Static Frame (PNG)')
         .addOption('webm', 'WebM Video')
         .setValue(this.plugin.settingsManager.get('format') || 'mp4')
-        .onChange(async (value: ManimSettings['format']) => {
-          await this.plugin.settingsManager.set('format', value);
+        .onChange(async (value: string) => {
+          await this.plugin.settingsManager.set('format', value as ManimSettings['format']);
         }));
 
     // Save last frame
@@ -104,8 +104,8 @@ export class ManimSettingTab extends PluginSettingTab {
         .addOption('high', 'High (1080p, 60fps)')
         .addOption('4k', '4K (60fps) - Slowest')
         .setValue(this.plugin.settingsManager.get('quality'))
-        .onChange(async (value: ManimSettings['quality']) => {
-          await this.plugin.settingsManager.set('quality', value);
+        .onChange(async (value: string) => {
+          await this.plugin.settingsManager.set('quality', value as ManimSettings['quality']);
         }));
 
     // Preview width

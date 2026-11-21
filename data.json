@@ -1,0 +1,14 @@
+{
+  "pythonPath": "python",
+  "manimPath": "manim",
+  "format": "gif",
+  "saveLastFrame": false,
+  "transparent": false,
+  "autoRender": true,
+  "debounceMs": 2000,
+  "quality": "high",
+  "previewWidth": 640,
+  "cacheDir": ".obsidian/plugins/obsidian-manim-preview/cache",
+  "renderTimeoutMs": 120000,
+  "livePreview": false
+}
