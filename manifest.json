@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-manim-preview",
+  "name": "Manim Preview",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Preview Manim animations directly in Obsidian notes",
+  "author": "",
+  "authorUrl": "",
+  "isDesktopOnly": true
+}
