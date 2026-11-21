@@ -38,6 +38,40 @@ export class ManimSettingTab extends PluginSettingTab {
           await this.plugin.settingsManager.set('manimPath', value);
         }));
 
+    // Output format
+    new Setting(containerEl)
+      .setName('Output Format')
+      .setDesc('Format for rendered output')
+      .addDropdown(dropdown => dropdown
+        .addOption('mp4', 'MP4 Video')
+        .addOption('gif', 'GIF Animation')
+        .addOption('png', 'Static Frame (PNG)')
+        .addOption('webm', 'WebM Video')
+        .setValue(this.plugin.settingsManager.get('format') || 'mp4')
+        .onChange(async (value: ManimSettings['format']) => {
+          await this.plugin.settingsManager.set('format', value);
+        }));
+
+    // Save last frame
+    new Setting(containerEl)
+      .setName('Save Last Frame')
+      .setDesc('Save the last frame as a PNG image in addition to the video')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settingsManager.get('saveLastFrame') || false)
+        .onChange(async (value) => {
+          await this.plugin.settingsManager.set('saveLastFrame', value);
+        }));
+
+    // Transparent background
+    new Setting(containerEl)
+      .setName('Transparent Background')
+      .setDesc('Render with transparent background (requires format=webm or png)')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settingsManager.get('transparent') || false)
+        .onChange(async (value) => {
+          await this.plugin.settingsManager.set('transparent', value);
+        }));
+
     // Auto-render toggle
     new Setting(containerEl)
       .setName('Auto Render')

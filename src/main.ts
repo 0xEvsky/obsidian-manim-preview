@@ -261,6 +261,49 @@ export class ManimPlugin extends Plugin {
   outline-offset: 2px;
 }
 
+/* Format selector */
+.manim-format-selector {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.manim-format-selector:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+/* Progress bar */
+.manim-progress-container {
+  margin-top: 0.5rem;
+}
+
+.manim-progress-bar {
+  height: 4px;
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.manim-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--interactive-accent);
+  transition: width 0.3s ease;
+}
+
+.manim-progress-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  text-align: right;
+}
+
 /* Render hint */
 .manim-render-hint {
   font-size: 0.7rem;

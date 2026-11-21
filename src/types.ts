@@ -7,6 +7,12 @@ export interface ManimSettings {
   pythonPath: string;
   /** Path to manim executable (if different from python -m manim) */
   manimPath: string;
+  /** Output format: 'mp4' | 'gif' | 'png' | 'webm' */
+  format: 'mp4' | 'gif' | 'png' | 'webm';
+  /** Save last frame as PNG */
+  saveLastFrame: boolean;
+  /** Transparent background (requires webm or png) */
+  transparent: boolean;
   /** Enable automatic rendering on code change */
   autoRender: boolean;
   /** Debounce delay in milliseconds */
@@ -59,6 +65,14 @@ export interface ManimExecutionOptions {
   manimPath: string;
   /** Python executable path */
   pythonPath: string;
+  /** Output format */
+  format?: 'mp4' | 'gif' | 'png' | 'webm';
+  /** Save last frame only */
+  saveLastFrame?: boolean;
+  /** Transparent background */
+  transparent?: boolean;
+  /** Progress callback */
+  onProgress?: (progress: number, message: string) => void;
 }
 
 export interface CodeBlockInfo {
@@ -84,6 +98,9 @@ export const QUALITY_FLAGS: Record<ManimSettings['quality'], string> = {
 export const DEFAULT_SETTINGS: ManimSettings = {
   pythonPath: 'python',
   manimPath: 'manim',
+  format: 'mp4',
+  saveLastFrame: false,
+  transparent: false,
   autoRender: true,
   debounceMs: 1500,
   quality: 'low',

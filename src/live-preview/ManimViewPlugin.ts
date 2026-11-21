@@ -11,6 +11,7 @@ interface ManimBlockInfo {
   scenes: string[];
   preferredScene?: string;
   currentScene: string;
+  currentFormat: string;
   cachedResult?: ManimResult;
   isRendering: boolean;
 }
@@ -22,15 +23,17 @@ class ManimLiveWidget extends WidgetType {
   private blockInfo: ManimBlockInfo;
   private settings: ManimSettings;
   private executor: ManimExecutor;
-  private triggerRender: (blockId: string, sceneName: string) => void;
+  private triggerRender: (blockId: string, sceneName: string, format: string) => void;
   private onSceneChange: (blockId: string, sceneName: string) => void;
+  private onFormatChange: (blockId: string, format: string) => void;
 
   constructor(
     blockInfo: ManimBlockInfo,
     settings: ManimSettings,
     executor: ManimExecutor,
-    triggerRender: (blockId: string, sceneName: string) => void,
-    onSceneChange: (blockId: string, sceneName: string) => void
+    triggerRender: (blockId: string, sceneName: string, format: string) => void,
+    onSceneChange: (blockId: string, sceneName: string) => void,
+    onFormatChange: (blockId: string, format: string) => void
   ) {
     super();
     this.blockInfo = blockInfo;
@@ -38,12 +41,14 @@ class ManimLiveWidget extends WidgetType {
     this.executor = executor;
     this.triggerRender = triggerRender;
     this.onSceneChange = onSceneChange;
+    this.onFormatChange = onFormatChange;
   }
 
   eq(other: WidgetType): boolean {
     if (!(other instanceof ManimLiveWidget)) return false;
     return other.blockInfo.blockId === this.blockInfo.blockId &&
            other.blockInfo.currentScene === this.blockInfo.currentScene &&
+           other.blockInfo.currentFormat === this.blockInfo.currentFormat &&
            other.blockInfo.isRendering === this.blockInfo.isRendering;
   }
 
@@ -56,6 +61,33 @@ class ManimLiveWidget extends WidgetType {
     const controls = document.createElement('div');
     controls.className = 'manim-live-preview-controls';
     controls.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; align-items: center;';
+
+    // Format selector
+    const formatSelect = document.createElement('select');
+    formatSelect.className = 'manim-format-selector';
+    formatSelect.style.cssText = 'padding: 0.25rem 0.5rem; font-size: 0.8rem; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-primary); color: var(--text-normal);';
+    const formats = [
+      { value: 'mp4', label: 'MP4' },
+      { value: 'gif', label: 'GIF' },
+      { value: 'png', label: 'PNG' },
+      { value: 'webm', label: 'WebM' },
+    ];
+    for (const fmt of formats) {
+      const option = document.createElement('option');
+      option.value = fmt.value;
+      option.textContent = fmt.label;
+      if (fmt.value === this.blockInfo.currentFormat) {
+        option.selected = true;
+      }
+      formatSelect.appendChild(option);
+    }
+
+    formatSelect.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      this.onFormatChange(this.blockInfo.blockId, target.value);
+    });
+
+    controls.appendChild(formatSelect);
 
     // Scene selector
     if (this.blockInfo.scenes.length > 1) {
@@ -98,11 +130,34 @@ class ManimLiveWidget extends WidgetType {
     }
 
     renderButton.addEventListener('click', () => {
-      this.triggerRender(this.blockInfo.blockId, this.blockInfo.currentScene);
+      this.triggerRender(this.blockInfo.blockId, this.blockInfo.currentScene, this.blockInfo.currentFormat);
     });
 
     controls.appendChild(renderButton);
     container.appendChild(controls);
+
+    // Progress container (shown during rendering)
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'manim-progress-container';
+    progressContainer.style.display = isRendering ? 'block' : 'none';
+    progressContainer.style.marginTop = '0.5rem';
+
+    const progressBar = document.createElement('div');
+    progressBar.className = 'manim-progress-bar';
+    progressBar.style.cssText = 'height: 4px; background: var(--background-modifier-border); border-radius: 2px; overflow: hidden;';
+
+    const progressFill = document.createElement('div');
+    progressFill.className = 'manim-progress-fill';
+    progressFill.style.cssText = 'height: 100%; width: 0%; background: var(--interactive-accent); transition: width 0.3s ease;';
+    progressBar.appendChild(progressFill);
+    progressContainer.appendChild(progressBar);
+
+    const progressText = document.createElement('div');
+    progressText.className = 'manim-progress-text';
+    progressText.style.cssText = 'font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; text-align: right;';
+    progressText.textContent = isRendering ? 'Starting render...' : '';
+    progressContainer.appendChild(progressText);
+    container.appendChild(progressContainer);
 
     // Content area
     const contentArea = document.createElement('div');
@@ -122,18 +177,27 @@ class ManimLiveWidget extends WidgetType {
       errorContent.textContent = this.blockInfo.cachedResult.error;
       contentArea.appendChild(errorContent);
     } else if (this.blockInfo.cachedResult?.videoPath) {
-      // Video state
+      // Video/Image state
       contentArea.style.cssText = 'margin-top: 0.5rem;';
 
       const videoUrl = `file://${this.blockInfo.cachedResult.videoPath.replace(/\\/g, '/')}`;
+      const ext = this.blockInfo.cachedResult.videoPath.split('.').pop()?.toLowerCase();
 
-      const video = document.createElement('video');
-      video.className = 'manim-preview-video';
-      video.controls = true;
-      video.src = videoUrl;
-      video.style.cssText = `max-width: ${this.settings.previewWidth}px; width: 100%; border-radius: var(--radius-s); background: var(--background-primary); box-shadow: var(--shadow-s);`;
-
-      contentArea.appendChild(video);
+      if (ext === 'gif' || ext === 'png') {
+        const img = document.createElement('img');
+        img.className = 'manim-preview-video';
+        img.src = videoUrl;
+        img.alt = `Manim ${ext === 'gif' ? 'animation' : 'frame'}: ${this.blockInfo.cachedResult.sceneName || 'scene'}`;
+        img.style.cssText = `max-width: ${this.settings.previewWidth}px; width: 100%; border-radius: var(--radius-s); background: var(--background-primary); box-shadow: var(--shadow-s);`;
+        contentArea.appendChild(img);
+      } else {
+        const video = document.createElement('video');
+        video.className = 'manim-preview-video';
+        video.controls = true;
+        video.src = videoUrl;
+        video.style.cssText = `max-width: ${this.settings.previewWidth}px; width: 100%; border-radius: var(--radius-s); background: var(--background-primary); box-shadow: var(--shadow-s);`;
+        contentArea.appendChild(video);
+      }
 
       if (this.blockInfo.cachedResult.sceneName) {
         const label = document.createElement('div');
@@ -149,6 +213,17 @@ class ManimLiveWidget extends WidgetType {
     }
 
     container.appendChild(contentArea);
+
+    // Store references for progress updates
+    (this as any)._progressFill = progressFill;
+    (this as any)._progressText = progressText;
+
+    // Register widget for progress updates
+    if (!(window as any).__manimWidgets) {
+      (window as any).__manimWidgets = {};
+    }
+    (window as any).__manimWidgets[this.blockInfo.blockId] = this;
+
     return container;
   }
 
@@ -170,7 +245,7 @@ export function createManimViewPlugin(
   const pendingRenders = new Set<string>();
 
   // Callback functions that widgets will use
-  const triggerRender = async (blockId: string, sceneName: string): Promise<void> => {
+  const triggerRender = async (blockId: string, sceneName: string, format: string): Promise<void> => {
     if (pendingRenders.has(blockId)) return;
     const blockInfo = blockInfos.get(blockId);
     if (!blockInfo) return;
@@ -178,6 +253,7 @@ export function createManimViewPlugin(
     pendingRenders.add(blockId);
     blockInfo.isRendering = true;
     blockInfo.currentScene = sceneName;
+    blockInfo.currentFormat = format;
 
     // Request view update to show rendering state
     requestAnimationFrame(() => {
@@ -194,6 +270,21 @@ export function createManimViewPlugin(
         timeoutMs: settings.renderTimeoutMs,
         manimPath: settings.manimPath,
         pythonPath: settings.pythonPath,
+        format: format as any,
+        saveLastFrame: settings.saveLastFrame,
+        transparent: settings.transparent,
+        onProgress: (progress: number, message: string) => {
+          // Update progress in widget if available
+          const widget = (window as any).__manimWidgets?.[blockId];
+          if (widget) {
+            if (widget._progressFill) {
+              widget._progressFill.style.width = `${progress}%`;
+            }
+            if (widget._progressText) {
+              widget._progressText.textContent = message;
+            }
+          }
+        },
       });
 
       blockInfo.cachedResult = result;
@@ -222,7 +313,18 @@ export function createManimViewPlugin(
       // Clear cached result since scene changed
       blockInfo.cachedResult = undefined;
       // Trigger render with new scene
-      triggerRender(blockId, sceneName);
+      triggerRender(blockId, sceneName, blockInfo.currentFormat);
+    }
+  };
+
+  const onFormatChange = (blockId: string, format: string): void => {
+    const blockInfo = blockInfos.get(blockId);
+    if (blockInfo) {
+      blockInfo.currentFormat = format;
+      // Clear cached result since format changed
+      blockInfo.cachedResult = undefined;
+      // Trigger render with new format
+      triggerRender(blockId, blockInfo.currentScene, format);
     }
   };
 
@@ -275,6 +377,7 @@ export function createManimViewPlugin(
       const scenes = sceneInfo.scenes;
       const preferredScene = sceneInfo.preferredScene;
       const currentScene = preferredScene || scenes[0] || '';
+      const currentFormat = settings.format || 'mp4';
 
       // Check cache
       const sourceHash = this.hashString(source);
@@ -291,6 +394,7 @@ export function createManimViewPlugin(
           scenes,
           preferredScene,
           currentScene,
+          currentFormat,
           cachedResult: cached,
           isRendering: false,
         };
@@ -305,6 +409,9 @@ export function createManimViewPlugin(
         if (!blockInfo.currentScene || (preferredScene && preferredScene !== blockInfo.currentScene)) {
           blockInfo.currentScene = preferredScene || scenes[0] || '';
         }
+        if (!blockInfo.currentFormat) {
+          blockInfo.currentFormat = currentFormat;
+        }
       }
 
       // Create decoration with widget
@@ -313,7 +420,8 @@ export function createManimViewPlugin(
         settings,
         executor,
         triggerRender,
-        onSceneChange
+        onSceneChange,
+        onFormatChange
       );
 
       const deco = Decoration.replace({ widget, block: true }).range(node.from, node.to);

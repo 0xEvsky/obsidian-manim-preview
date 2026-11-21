@@ -49,6 +49,21 @@ export class ManimCodeBlockProcessor {
     // Add controls bar
     const buttonContainer = container.createDiv({ cls: 'manim-preview-controls' });
 
+    // Format selector
+    const formatSelector = buttonContainer.createEl('select', { cls: 'manim-format-selector' });
+    const formats = [
+      { value: 'mp4', label: 'MP4' },
+      { value: 'gif', label: 'GIF' },
+      { value: 'png', label: 'PNG (last frame)' },
+      { value: 'webm', label: 'WebM' },
+    ];
+    for (const fmt of formats) {
+      const option = formatSelector.createEl('option', { value: fmt.value, text: fmt.label });
+      if (fmt.value === this.settings.format) {
+        option.selected = true;
+      }
+    }
+
     // Scene selector (if multiple scenes)
     let sceneSelector: HTMLSelectElement | null = null;
     if (scenes.length > 1) {
@@ -94,6 +109,14 @@ export class ManimCodeBlockProcessor {
       renderButton.textContent = 'Re-render';
     }
 
+    // Handle format selector change
+    formatSelector.addEventListener('change', () => {
+      // Clear video since format changed
+      videoContainer.style.display = 'none';
+      videoContainer.empty();
+      renderButton.textContent = 'Render';
+    });
+
     // Handle scene selector change
     if (sceneSelector) {
       sceneSelector.addEventListener('change', () => {
@@ -108,6 +131,7 @@ export class ManimCodeBlockProcessor {
     // Handle render button click
     renderButton.addEventListener('click', async () => {
       const sceneToRender = sceneSelector?.value || initialScene;
+      const formatToRender = formatSelector.value;
       await this.renderAndShow(
         source,
         videoContainer,
@@ -115,7 +139,8 @@ export class ManimCodeBlockProcessor {
         errorContainer,
         renderButton,
         blockId,
-        sceneToRender
+        sceneToRender,
+        formatToRender
       );
     });
 
@@ -175,8 +200,23 @@ export class ManimCodeBlockProcessor {
     errorContainer: HTMLElement,
     renderButton: HTMLButtonElement,
     blockId: string,
-    sceneName?: string
+    sceneName?: string,
+    format?: string
   ): Promise<void> {
+    // Get the parent container (the manim-preview-container)
+    const parentContainer = renderButton.closest('.manim-preview-container') as HTMLElement;
+
+    // Create progress indicator
+    const progressContainer = parentContainer.createDiv({ cls: 'manim-progress-container' });
+    progressContainer.style.display = 'none';
+    progressContainer.style.marginTop = '0.5rem';
+    const progressBar = progressContainer.createDiv({ cls: 'manim-progress-bar' });
+    progressBar.style.cssText = 'height: 4px; background: var(--background-modifier-border); border-radius: 2px; overflow: hidden;';
+    const progressFill = progressBar.createDiv({ cls: 'manim-progress-fill' });
+    progressFill.style.cssText = 'height: 100%; width: 0%; background: var(--interactive-accent); transition: width 0.3s ease;';
+    const progressText = progressContainer.createDiv({ cls: 'manim-progress-text' });
+    progressText.style.cssText = 'font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; text-align: right;';
+
     // Show loading state
     renderButton.disabled = true;
     renderButton.textContent = 'Rendering...';
@@ -185,6 +225,7 @@ export class ManimCodeBlockProcessor {
     statusEl.style.display = 'block';
     errorContainer.style.display = 'none';
     videoContainer.style.display = 'none';
+    progressContainer.style.display = 'block';
 
     try {
       const result = await this.executor.execute({
@@ -195,6 +236,13 @@ export class ManimCodeBlockProcessor {
         timeoutMs: this.settings.renderTimeoutMs,
         manimPath: this.settings.manimPath,
         pythonPath: this.settings.pythonPath,
+        format: format as any,
+        saveLastFrame: this.settings.saveLastFrame,
+        transparent: this.settings.transparent,
+        onProgress: (progress: number, message: string) => {
+          progressFill.style.width = `${progress}%`;
+          progressText.setText(message);
+        },
       });
 
       if (result.error) {
@@ -212,6 +260,7 @@ export class ManimCodeBlockProcessor {
     } finally {
       renderButton.disabled = false;
       renderButton.classList.remove('manim-rendering');
+      progressContainer.style.display = 'none';
     }
   }
 
@@ -236,29 +285,53 @@ export class ManimCodeBlockProcessor {
     // Set new timer
     const timer = setTimeout(() => {
       this.debounceTimers.delete(blockId);
-      this.renderAndShow(source, videoContainer, statusEl, errorContainer, renderButton, blockId, sceneName);
+      this.renderAndShow(source, videoContainer, statusEl, errorContainer, renderButton, blockId, sceneName, this.settings.format);
     }, this.settings.debounceMs);
 
     this.debounceTimers.set(blockId, timer);
   }
 
   /**
-   * Display video player
+   * Display video/image player based on format
    */
   private showVideo(container: HTMLElement, videoPath: string, sceneName?: string): void {
     container.empty();
 
-    // Convert absolute path to file:// URL for video element
-    const videoUrl = `file://${videoPath.replace(/\\/g, '/')}`;
+    // Convert absolute path to file:// URL
+    const mediaUrl = `file://${videoPath.replace(/\\/g, '/')}`;
+    const ext = videoPath.split('.').pop()?.toLowerCase();
 
-    const video = container.createEl('video', {
-      cls: 'manim-preview-video',
-      attr: {
-        controls: true,
-        src: videoUrl,
-        style: `max-width: ${this.settings.previewWidth}px; width: 100%;`,
-      },
-    });
+    if (ext === 'gif') {
+      const img = container.createEl('img', {
+        cls: 'manim-preview-video',
+        attr: {
+          src: mediaUrl,
+          style: `max-width: ${this.settings.previewWidth}px; width: 100%;`,
+          alt: `Manim animation: ${sceneName || 'scene'}`,
+        },
+      });
+      img.setAttribute('controls', 'false'); // GIFs don't have native controls
+    } else if (ext === 'png') {
+      const img = container.createEl('img', {
+        cls: 'manim-preview-video',
+        attr: {
+          src: mediaUrl,
+          style: `max-width: ${this.settings.previewWidth}px; width: 100%;`,
+          alt: `Manim frame: ${sceneName || 'scene'}`,
+        },
+      });
+      img.setAttribute('controls', 'false');
+    } else {
+      // Video formats (mp4, webm)
+      const video = container.createEl('video', {
+        cls: 'manim-preview-video',
+        attr: {
+          controls: true,
+          src: mediaUrl,
+          style: `max-width: ${this.settings.previewWidth}px; width: 100%;`,
+        },
+      });
+    }
 
     // Add scene name label if available
     if (sceneName) {

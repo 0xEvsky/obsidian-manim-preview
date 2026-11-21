@@ -1,9 +1,8 @@
-import { App, TFile, Vault } from 'obsidian';
-import { execFile } from 'child_process';
+import { App } from 'obsidian';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import { join, dirname, basename, extname } from 'path';
-import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from 'fs';
-import { v4 as uuidv4 } from 'crypto';
+import { join } from 'path';
+import { existsSync, mkdirSync, rmSync, readdirSync, copyFileSync } from 'fs';
 import {
   ManimSettings,
   ManimResult,
@@ -47,37 +46,77 @@ function extractSceneNames(source: string): string[] {
 /**
  * Find the output video file from manim render
  */
-function findOutputVideo(outputDir: string, sceneName: string): string | null {
-  const mediaDir = join(outputDir, 'media', 'videos');
+function findOutputVideo(outputDir: string, sceneName: string, format: string): string | null {
+  const mediaDir = join(outputDir, 'media', format === 'gif' ? 'videos' : 'videos');
 
-  if (!existsSync(mediaDir)) {
-    return null;
-  }
+  // For gif, check images directory
+  const searchDirs = format === 'gif'
+    ? [join(outputDir, 'media', 'videos'), join(outputDir, 'media', 'images')]
+    : [join(outputDir, 'media', 'videos')];
 
-  // Find the scene directory
-  const sceneDirs = readdirSync(mediaDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
+  for (const mediaDir of searchDirs) {
+    if (!existsSync(mediaDir)) continue;
 
-  for (const sceneDir of sceneDirs) {
-    const qualityDirs = ['480p15', '720p30', '1080p60', '2160p60'];
+    // Find the scene directory
+    const sceneDirs = readdirSync(mediaDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
 
-    for (const qualityDir of qualityDirs) {
-      const videoPath = join(mediaDir, sceneDir, qualityDir, `${sceneName}.mp4`);
-      if (existsSync(videoPath)) {
-        return videoPath;
+    for (const sceneDir of sceneDirs) {
+      const qualityDirs = ['480p15', '720p30', '1080p60', '2160p60'];
+
+      for (const qualityDir of qualityDirs) {
+        const ext = format === 'gif' ? '.gif' : format === 'png' ? '.png' : '.mp4';
+        const videoPath = join(mediaDir, sceneDir, qualityDir, `${sceneName}${ext}`);
+        if (existsSync(videoPath)) {
+          return videoPath;
+        }
+      }
+
+      // Also check for any matching file in the scene directory
+      try {
+        const files = readdirSync(join(mediaDir, sceneDir), { recursive: true });
+        const ext = format === 'gif' ? '.gif' : format === 'png' ? '.png' : '.mp4';
+        const matchedFiles = files.filter(f => f.endsWith(ext));
+        if (matchedFiles.length > 0) {
+          return join(mediaDir, sceneDir, matchedFiles[0]);
+        }
+      } catch {
+        // Ignore
       }
     }
+  }
 
-    // Also check for any mp4 in the scene directory
-    try {
-      const files = readdirSync(join(mediaDir, sceneDir), { recursive: true });
-      const mp4Files = files.filter(f => f.endsWith('.mp4'));
-      if (mp4Files.length > 0) {
-        return join(mediaDir, sceneDir, mp4Files[0]);
-      }
-    } catch {
-      // Ignore
+  return null;
+}
+
+/**
+ * Parse manim stdout for progress information
+ */
+function parseProgress(stdout: string): { progress: number; message: string } | null {
+  // Manim outputs progress like:
+  // "  10%|██▌       | 10/100 [00:02<00:18,  4.98it/s]"
+  // "File ready at '/path/to/video.mp4'"
+
+  const lines = stdout.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+
+    // Progress bar pattern
+    const progressMatch = line.match(/(\d+)%\|.*?\|\s*(\d+)\/(\d+)/);
+    if (progressMatch) {
+      const percent = parseInt(progressMatch[1], 10);
+      const current = parseInt(progressMatch[2], 10);
+      const total = parseInt(progressMatch[3], 10);
+      return {
+        progress: percent,
+        message: `Rendering frame ${current}/${total} (${percent}%)`
+      };
+    }
+
+    // File ready message
+    if (line.startsWith('File ready at')) {
+      return { progress: 100, message: 'Render complete' };
     }
   }
 
@@ -90,6 +129,7 @@ export class ManimExecutor {
   private cacheDir: string;
   private pendingRenders: Map<string, AbortController> = new Map();
   private renderCache: Map<string, ManimResult> = new Map();
+  private progressCallbacks: Map<string, (progress: number, message: string) => void> = new Map();
 
   constructor(app: App, settings: ManimSettings) {
     this.app = app;
@@ -115,7 +155,8 @@ export class ManimExecutor {
    */
   async execute(options: ManimExecutionOptions): Promise<ManimResult> {
     const sourceHash = hashString(options.source);
-    const cacheKey = `${sourceHash}-${options.sceneName || 'first'}-${options.quality}`;
+    const format = options.format || 'mp4';
+    const cacheKey = `${sourceHash}-${options.sceneName || 'first'}-${options.quality}-${format}`;
 
     // Check cache first
     const cached = this.renderCache.get(cacheKey);
@@ -126,11 +167,16 @@ export class ManimExecutor {
     // Check for pending render of same source
     if (this.pendingRenders.has(cacheKey)) {
       // Wait for the existing render to complete
-      // For now, we'll just execute anyway - in future could await the existing promise
+      // For now, we'll just execute anyway
     }
 
     const abortController = new AbortController();
     this.pendingRenders.set(cacheKey, abortController);
+
+    // Register progress callback if provided
+    if (options.onProgress) {
+      this.progressCallbacks.set(cacheKey, options.onProgress);
+    }
 
     try {
       const result = await this.runManim(options, sourceHash, cacheKey);
@@ -143,11 +189,12 @@ export class ManimExecutor {
       return result;
     } finally {
       this.pendingRenders.delete(cacheKey);
+      this.progressCallbacks.delete(cacheKey);
     }
   }
 
   /**
-   * Run the manim command
+   * Run the manim command with progress tracking
    */
   private async runManim(
     options: ManimExecutionOptions,
@@ -156,6 +203,7 @@ export class ManimExecutor {
   ): Promise<ManimResult> {
     const scenes = extractSceneNames(options.source);
     const sceneName = options.sceneName || scenes[0];
+    const format = options.format || 'mp4';
 
     if (!sceneName) {
       return {
@@ -186,18 +234,17 @@ export class ManimExecutor {
         tempFile,
         sceneName,
         options.quality,
-        options.outputDir
+        options.outputDir,
+        format,
+        options.saveLastFrame,
+        options.transparent
       );
 
-      // Execute manim
-      const { stdout, stderr } = await execFileAsync(command, args, {
-        timeout: options.timeoutMs,
-        maxBuffer: 1024 * 1024 * 10, // 10MB
-        signal: this.pendingRenders.get(cacheKey)?.signal,
-      });
+      // Execute manim with spawn for progress tracking
+      const result = await this.runManimWithProgress(command, args, options, cacheKey);
 
       // Find output video
-      const videoPath = findOutputVideo(options.outputDir, sceneName);
+      const videoPath = findOutputVideo(options.outputDir, sceneName, format);
 
       if (!videoPath || !existsSync(videoPath)) {
         return {
@@ -206,15 +253,16 @@ export class ManimExecutor {
           sourceHash,
           sceneName,
           scenes,
-          error: `Render completed but video not found. Stdout: ${stdout}\nStderr: ${stderr}`,
+          error: `Render completed but ${format} not found. ${result.stdout}\nStderr: ${result.stderr}`,
           timestamp: Date.now(),
           fromCache: false,
         };
       }
 
-      // Copy to cache with stable name
-      const cachedVideoPath = join(this.cacheDir, `${cacheKey}.mp4`);
-      await this.copyFile(videoPath, cachedVideoPath);
+      // Determine cached file extension
+      const ext = format === 'gif' ? '.gif' : format === 'png' ? '.png' : '.mp4';
+      const cachedVideoPath = join(this.cacheDir, `${cacheKey}${ext}`);
+      copyFileSync(videoPath, cachedVideoPath);
 
       return {
         id: cacheKey,
@@ -258,44 +306,99 @@ export class ManimExecutor {
   }
 
   /**
-   * Build the manim command based on settings
+   * Run manim with spawn to capture progress
+   */
+  private runManimWithProgress(
+    command: string,
+    args: string[],
+    options: ManimExecutionOptions,
+    cacheKey: string
+  ): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+
+      const child = spawn(command, args, {
+        timeout: options.timeoutMs,
+        signal: this.pendingRenders.get(cacheKey)?.signal,
+      });
+
+      child.stdout?.on('data', (data) => {
+        const chunk = data.toString();
+        stdout += chunk;
+
+        // Parse progress and call callback
+        const progress = parseProgress(chunk);
+        if (progress && options.onProgress) {
+          options.onProgress(progress.progress, progress.message);
+        }
+      });
+
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+        } else {
+          const error = new Error(`Manim exited with code ${code}`) as any;
+          error.code = code;
+          error.stderr = stderr;
+          reject(error);
+        }
+      });
+
+      child.on('error', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  /**
+   * Build the manim command based on settings and options
    */
   private buildManimCommand(
     sourceFile: string,
     sceneName: string,
     quality: 'low' | 'medium' | 'high' | '4k',
-    outputDir: string
+    outputDir: string,
+    format: string,
+    saveLastFrame?: boolean,
+    transparent?: boolean
   ): { command: string; args: string[] } {
     const manimPath = this.settings.manimPath;
     const pythonPath = this.settings.pythonPath;
     const qualityFlag = QUALITY_FLAGS[quality];
 
+    const baseArgs = [
+      'render',
+      sourceFile,
+      sceneName,
+      qualityFlag,
+      `--format=${format}`,
+      `--media_dir=${outputDir}`,
+    ];
+
+    if (saveLastFrame) {
+      baseArgs.push('-s');
+    }
+
+    if (transparent) {
+      baseArgs.push('-t');
+    }
+
     if (manimPath && manimPath !== 'manim') {
       // Custom manim executable
       return {
         command: manimPath,
-        args: [
-          'render',
-          sourceFile,
-          sceneName,
-          qualityFlag,
-          '--format=mp4',
-          `--media_dir=${outputDir}`,
-        ],
+        args: baseArgs,
       };
     } else {
       // Use python -m manim
       return {
         command: pythonPath,
-        args: [
-          '-m', 'manim',
-          'render',
-          sourceFile,
-          sceneName,
-          qualityFlag,
-          '--format=mp4',
-          `--media_dir=${outputDir}`,
-        ],
+        args: ['-m', 'manim', ...baseArgs],
       };
     }
   }
@@ -306,14 +409,6 @@ export class ManimExecutor {
   private async writeTempFile(filePath: string, content: string): Promise<void> {
     const { writeFile } = await import('fs/promises');
     await writeFile(filePath, content, 'utf-8');
-  }
-
-  /**
-   * Copy file from source to destination
-   */
-  private async copyFile(src: string, dest: string): Promise<void> {
-    const { copyFile } = await import('fs/promises');
-    await copyFile(src, dest);
   }
 
   /**
