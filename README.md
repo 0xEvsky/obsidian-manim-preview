@@ -25,7 +25,7 @@ An Obsidian community plugin that integrates **Manim Community Edition** directl
 1. Clone this repository into your vault's plugins folder:
    ```bash
    cd /path/to/your/vault/.obsidian/plugins
-   git clone https://github.com/yourusername/obsidian-manim-preview.git
+   git clone https://github.com/0xEvsky/obsidian-manim-preview.git
    cd obsidian-manim-preview
    npm install
    npm run build
