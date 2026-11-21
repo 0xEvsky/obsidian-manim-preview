@@ -1,4 +1,4 @@
-import { App, MarkdownPostProcessorContext, MarkdownView, Plugin, TFile } from 'obsidian';
+import { App, MarkdownPostProcessorContext, Plugin } from 'obsidian';
 import { ManimExecutor } from '../execution/ManimExecutor';
 import { ManimSettings, ManimResult } from '../types';
 
@@ -7,8 +7,8 @@ export class ManimCodeBlockProcessor {
   private plugin: Plugin;
   private executor: ManimExecutor;
   private settings: ManimSettings;
-  private activeViews: Map<string, HTMLVideoElement> = new Map();
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+  private currentSceneSelections: Map<string, string> = new Map(); // blockId -> selected scene
 
   constructor(app: App, plugin: Plugin, executor: ManimExecutor, settings: ManimSettings) {
     this.app = app;
@@ -41,8 +41,26 @@ export class ManimCodeBlockProcessor {
     // Create container for the preview
     const container = el.createDiv({ cls: 'manim-preview-container' });
 
-    // Add render button
+    // Extract scene info from source
+    const sceneInfo = this.extractSceneInfo(source);
+    const scenes = sceneInfo.scenes;
+    const preferredScene = sceneInfo.preferredScene;
+
+    // Add controls bar
     const buttonContainer = container.createDiv({ cls: 'manim-preview-controls' });
+
+    // Scene selector (if multiple scenes)
+    let sceneSelector: HTMLSelectElement | null = null;
+    if (scenes.length > 1) {
+      sceneSelector = buttonContainer.createEl('select', { cls: 'manim-scene-selector' });
+      for (const scene of scenes) {
+        const option = sceneSelector.createEl('option', { value: scene, text: scene });
+        if (scene === preferredScene) {
+          option.selected = true;
+        }
+      }
+    }
+
     const renderButton = buttonContainer.createEl('button', {
       cls: 'manim-render-button',
       text: 'Render',
@@ -62,9 +80,13 @@ export class ManimCodeBlockProcessor {
     // Generate unique ID for this code block
     const blockId = this.generateBlockId(source, ctx);
 
+    // Restore previous scene selection for this block
+    const savedScene = this.currentSceneSelections.get(blockId);
+    const initialScene = savedScene || preferredScene || scenes[0];
+
     // Check for cached result
     const sourceHash = this.hashString(source);
-    const cached = this.executor.getCached(sourceHash, undefined, this.settings.quality);
+    const cached = this.executor.getCached(sourceHash, initialScene, this.settings.quality);
 
     if (cached && cached.videoPath) {
       this.showVideo(videoContainer, cached.videoPath, cached.sceneName);
@@ -72,15 +94,28 @@ export class ManimCodeBlockProcessor {
       renderButton.textContent = 'Re-render';
     }
 
+    // Handle scene selector change
+    if (sceneSelector) {
+      sceneSelector.addEventListener('change', () => {
+        this.currentSceneSelections.set(blockId, sceneSelector!.value);
+        // Clear video since scene changed
+        videoContainer.style.display = 'none';
+        videoContainer.empty();
+        renderButton.textContent = 'Render';
+      });
+    }
+
     // Handle render button click
     renderButton.addEventListener('click', async () => {
+      const sceneToRender = sceneSelector?.value || initialScene;
       await this.renderAndShow(
         source,
         videoContainer,
         statusEl,
         errorContainer,
         renderButton,
-        blockId
+        blockId,
+        sceneToRender
       );
     });
 
@@ -92,9 +127,42 @@ export class ManimCodeBlockProcessor {
         statusEl,
         errorContainer,
         renderButton,
-        blockId
+        blockId,
+        initialScene
       );
     }
+
+    // Add keyboard shortcut hint
+    if (this.settings.autoRender) {
+      const hint = buttonContainer.createDiv({ cls: 'manim-render-hint' });
+      hint.setText('Auto-renders on pause (Ctrl+Enter to force)');
+    }
+  }
+
+  /**
+   * Extract scene information from source code
+   */
+  private extractSceneInfo(source: string): { scenes: string[]; preferredScene?: string } {
+    const scenes: string[] = [];
+    let preferredScene: string | undefined;
+
+    const lines = source.split('\n');
+
+    for (const line of lines) {
+      // Check for scene preference comment: # scene: SceneName
+      const sceneCommentMatch = line.match(/^\s*#\s*scene\s*:\s*(\w+)/i);
+      if (sceneCommentMatch) {
+        preferredScene = sceneCommentMatch[1];
+      }
+
+      // Match class definitions that inherit from Scene
+      const classMatch = line.match(/^\s*class\s+(\w+)\s*\(\s*(?:Scene|.*Scene)\s*\)/);
+      if (classMatch) {
+        scenes.push(classMatch[1]);
+      }
+    }
+
+    return { scenes, preferredScene };
   }
 
   /**
@@ -106,12 +174,14 @@ export class ManimCodeBlockProcessor {
     statusEl: HTMLElement,
     errorContainer: HTMLElement,
     renderButton: HTMLButtonElement,
-    blockId: string
+    blockId: string,
+    sceneName?: string
   ): Promise<void> {
     // Show loading state
     renderButton.disabled = true;
     renderButton.textContent = 'Rendering...';
-    statusEl.setText('Rendering animation...');
+    renderButton.classList.add('manim-rendering');
+    statusEl.setText(sceneName ? `Rendering "${sceneName}"...` : 'Rendering animation...');
     statusEl.style.display = 'block';
     errorContainer.style.display = 'none';
     videoContainer.style.display = 'none';
@@ -119,6 +189,7 @@ export class ManimCodeBlockProcessor {
     try {
       const result = await this.executor.execute({
         source,
+        sceneName,
         quality: this.settings.quality,
         outputDir: this.executor.getCacheDir(),
         timeoutMs: this.settings.renderTimeoutMs,
@@ -140,6 +211,7 @@ export class ManimCodeBlockProcessor {
       statusEl.style.display = 'none';
     } finally {
       renderButton.disabled = false;
+      renderButton.classList.remove('manim-rendering');
     }
   }
 
@@ -152,7 +224,8 @@ export class ManimCodeBlockProcessor {
     statusEl: HTMLElement,
     errorContainer: HTMLElement,
     renderButton: HTMLButtonElement,
-    blockId: string
+    blockId: string,
+    sceneName?: string
   ): void {
     // Clear existing timer for this block
     const existingTimer = this.debounceTimers.get(blockId);
@@ -163,7 +236,7 @@ export class ManimCodeBlockProcessor {
     // Set new timer
     const timer = setTimeout(() => {
       this.debounceTimers.delete(blockId);
-      this.renderAndShow(source, videoContainer, statusEl, errorContainer, renderButton, blockId);
+      this.renderAndShow(source, videoContainer, statusEl, errorContainer, renderButton, blockId, sceneName);
     }, this.settings.debounceMs);
 
     this.debounceTimers.set(blockId, timer);
@@ -238,5 +311,6 @@ export class ManimCodeBlockProcessor {
       clearTimeout(timer);
     }
     this.debounceTimers.clear();
+    this.currentSceneSelections.clear();
   }
 }

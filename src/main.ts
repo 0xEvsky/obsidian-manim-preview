@@ -38,6 +38,9 @@ export class ManimPlugin extends Plugin {
     // Add commands
     this.addCommands();
 
+    // Add keyboard shortcut for forcing render in Reading View
+    this.registerDomEvent(document, 'keydown', this.handleKeyDown.bind(this));
+
     // Handle settings changes
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
@@ -46,6 +49,22 @@ export class ManimPlugin extends Plugin {
     );
 
     console.log('Manim Preview plugin loaded');
+  }
+
+  private handleKeyDown(event: KeyboardEvent): void {
+    // Ctrl+Enter (or Cmd+Enter on Mac) to force render the nearest manim block
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      const target = event.target as HTMLElement;
+      // Check if we're in a manim code block or its preview
+      const container = target.closest('.manim-preview-container');
+      if (container) {
+        const renderButton = container.querySelector('.manim-render-button') as HTMLButtonElement;
+        if (renderButton && !renderButton.disabled) {
+          event.preventDefault();
+          renderButton.click();
+        }
+      }
+    }
   }
 
   private loadStyles(): void {
@@ -198,6 +217,14 @@ export class ManimPlugin extends Plugin {
 .manim-scene-selector:focus-visible {
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;
+}
+
+/* Render hint */
+.manim-render-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin: auto 0;
+  padding: 0 0.25rem;
 }
 
 /* Reading view specific adjustments */
