@@ -12,6 +12,7 @@ An Obsidian community plugin that integrates **Manim Community Edition** directl
 - 🔧 **Custom Paths** — Configure Python and Manim executable paths
 - 📱 **Responsive Video Player** — Native HTML5 video with controls
 - 🎨 **Theme Aware** — Adapts to your Obsidian theme (light/dark)
+- 🔬 **Live Preview (Experimental)** — See previews while editing in Live Preview mode
 
 ## Installation
 
@@ -107,6 +108,7 @@ Open Settings → Community Plugins → Manim Preview to configure:
 | **Preview Width** | Maximum video width (px) | `640` |
 | **Cache Directory** | Relative path for cached renders | `.obsidian/plugins/obsidian-manim-preview/cache` |
 | **Render Timeout** | Max render time (ms) | `120000` |
+| **Live Preview (Experimental)** | Show previews in editing view | `false` |
 
 ### Quality Presets
 
@@ -188,7 +190,10 @@ src/
 │   └── ManimExecutor.ts       # Manim process execution & caching
 ├── reading-view/
 │   └── ManimCodeBlockProcessor.ts  # Reading View code block handler
-└── live-preview/              # (Planned) Live Preview integration
+└── live-preview/
+    ├── ManimViewPlugin.ts     # CodeMirror 6 ViewPlugin
+    ├── ManimWidget.ts         # Widget for preview UI
+    └── index.ts               # Exports
 ```
 
 ### Build Commands
@@ -200,16 +205,21 @@ npm run lint     # Run ESLint
 npm run test     # Run tests (Vitest)
 ```
 
-### Adding Live Preview Support
+### Live Preview Implementation
 
-The plugin architecture is designed to support Live Preview (editing view) via CodeMirror 6 widgets. See `src/live-preview/` for future implementation.
+The Live Preview integration uses CodeMirror 6 ViewPlugin with block widgets:
+- Registers via `registerEditorExtension()` 
+- Externalizes `@codemirror/*` in esbuild to avoid version conflicts
+- Uses `Decoration.replace({ widget, block: true })` to replace code blocks
+- Widgets include scene selector, render button, and video player
+- Enabled via "Live Preview (Experimental)" setting (requires reload)
 
 ## Roadmap
 
 - [x] **Milestone 1** — Proof of Concept (Reading View rendering)
-- [ ] **Milestone 2** — Usable Plugin (auto-render, error handling, caching)
-- [ ] **Milestone 3** — Live Preview Integration (CodeMirror 6 widgets)
-- [ ] **Milestone 4** — Polish (scene selector UI, keyboard shortcuts, themes)
+- [x] **Milestone 2** — Usable Plugin (auto-render, scene selector, caching, Ctrl+Enter shortcut)
+- [x] **Milestone 3** — Live Preview Integration (CodeMirror 6 ViewPlugin with block widgets)
+- [ ] **Milestone 4** — Polish (theme-aware styling, keyboard shortcuts, GIF export, tests)
 
 ## Contributing
 
