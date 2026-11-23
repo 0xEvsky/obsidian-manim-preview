@@ -1,3 +1,0 @@
-# This file records the segment order used by Manim.
-file 'file:C:/Users/Akram/Documents/Obsidian Vault/.obsidian/plugins/obsidian-manim-preview/cache/videos/scene_yirnor/1080p60/partial_movie_files/CreateCircle/1dd894dd5cf2ef2a9f3647e16a8089192d517db8c8e134c6df499650f8ecc505.mp4'
-file 'file:C:/Users/Akram/Documents/Obsidian Vault/.obsidian/plugins/obsidian-manim-preview/cache/videos/scene_yirnor/1080p60/partial_movie_files/CreateCircle/6664c5b4360c950c28063f6d5afdff81bec398537290b84141bdb0c7edaac2b5.mp4'
