@@ -332,7 +332,10 @@ export class ManimExecutor {
 
       if (error.code === 'ETIMEDOUT' || error.signal === 'SIGTERM') {
         errorMessage = `Render timed out after ${options.timeoutMs}ms`;
-      } else if (error.stderr) {
+      }
+      // Don't append stderr to error message - Manim writes progress to stderr even on success
+      // Only include stderr if it contains actual error indicators
+      else if (error.stderr && this.looksLikeRealError(error.stderr)) {
         errorMessage = `${error.message}\nStderr: ${error.stderr}`;
       }
 
@@ -496,6 +499,29 @@ export class ManimExecutor {
       controller.abort();
       this.pendingRenders.delete(cacheKey);
     }
+  }
+
+  /**
+   * Check if stderr contains actual error content (not just progress bars)
+   */
+  private looksLikeRealError(stderr: string): boolean {
+    const errorIndicators = [
+      'Error:',
+      'Traceback',
+      'Exception:',
+      'ModuleNotFoundError',
+      'ImportError',
+      'SyntaxError',
+      'RuntimeError',
+      'ValueError',
+      'FileNotFoundError',
+      'PermissionError',
+      'FFmpeg',
+      'ffmpeg',
+      'command not found',
+      'No such file',
+    ];
+    return errorIndicators.some(indicator => stderr.includes(indicator));
   }
 
   /**
