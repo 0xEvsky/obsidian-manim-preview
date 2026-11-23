@@ -299,14 +299,23 @@ export class ManimCodeBlockProcessor {
 
     const ext = videoPath.split('.').pop()?.toLowerCase();
     const mimeType = ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' : ext === 'webm' ? 'video/webm' : 'video/mp4';
+    const isImage = ext === 'gif' || ext === 'png';
 
-    // Read file via vault adapter and create blob URL (file:// blocked by Electron for .obsidian folder)
+    // Read file via vault adapter
     const adapter = this.app.vault.adapter;
     let mediaUrl: string;
     try {
       const arrayBuffer = await adapter.readBinary(videoPath);
       const blob = new Blob([arrayBuffer], { type: mimeType });
-      mediaUrl = URL.createObjectURL(blob);
+
+      if (isImage) {
+        // For images (GIF/PNG), use data URL to avoid CSP issues (img-src doesn't allow blob:)
+        const base64 = this.arrayBufferToBase64(arrayBuffer);
+        mediaUrl = `data:${mimeType};base64,${base64}`;
+      } else {
+        // For videos (MP4/WebM), blob URL works fine with video elements
+        mediaUrl = URL.createObjectURL(blob);
+      }
     } catch (error) {
       console.error('Failed to read video file:', error);
       const errorEl = container.createDiv({ cls: 'manim-preview-error-container' });
@@ -353,6 +362,20 @@ export class ManimCodeBlockProcessor {
       const label = container.createDiv({ cls: 'manim-preview-label' });
       label.setText(`Scene: ${sceneName}`);
     }
+  }
+
+  /**
+   * Convert ArrayBuffer to base64 string
+   */
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
   }
 
   /**

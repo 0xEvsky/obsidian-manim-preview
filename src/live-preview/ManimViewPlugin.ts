@@ -184,17 +184,27 @@ class ManimLiveWidget extends WidgetType {
       const videoPath = this.blockInfo.cachedResult.videoPath;
       const ext = videoPath.split('.').pop()?.toLowerCase();
       const mimeType = ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' : ext === 'webm' ? 'video/webm' : 'video/mp4';
+      const isImage = ext === 'gif' || ext === 'png';
 
-      // Create placeholder element first, then load blob URL asynchronously
+      // Create placeholder element first, then load media asynchronously
       const loadMedia = async (element: HTMLVideoElement | HTMLImageElement) => {
         try {
           const adapter = this.executor.app.vault.adapter;
           const arrayBuffer = await adapter.readBinary(videoPath);
           const blob = new Blob([arrayBuffer], { type: mimeType });
-          const blobUrl = URL.createObjectURL(blob);
-          element.src = blobUrl;
-          // Clean up on remove
-          element.addEventListener('remove', () => URL.revokeObjectURL(blobUrl), { once: true });
+
+          let mediaUrl: string;
+          if (isImage) {
+            // For images (GIF/PNG), use data URL to avoid CSP issues (img-src doesn't allow blob:)
+            const base64 = this.arrayBufferToBase64(arrayBuffer);
+            mediaUrl = `data:${mimeType};base64,${base64}`;
+          } else {
+            // For videos (MP4/WebM), blob URL works fine with video elements
+            mediaUrl = URL.createObjectURL(blob);
+            // Clean up on remove
+            element.addEventListener('remove', () => URL.revokeObjectURL(mediaUrl), { once: true });
+          }
+          element.src = mediaUrl;
         } catch (error) {
           console.error('Failed to load media:', error);
           element.style.display = 'none';
@@ -251,6 +261,20 @@ class ManimLiveWidget extends WidgetType {
 
   ignoreEvent(): boolean {
     return false;
+  }
+
+  /**
+   * Convert ArrayBuffer to base64 string
+   */
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
   }
 }
 

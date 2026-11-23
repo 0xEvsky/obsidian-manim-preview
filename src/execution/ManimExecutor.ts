@@ -54,13 +54,40 @@ function extractSceneNames(source: string): string[] {
 }
 
 /**
- * Find the output video file from manim render
+ * Map quality setting to manim output directory name
  */
-function findOutputVideo(outputDir: string, sceneName: string, format: string): string | null {
+function qualityToDirName(quality: 'low' | 'medium' | 'high' | '4k'): string {
+  switch (quality) {
+    case 'low': return '480p15';
+    case 'medium': return '720p30';
+    case 'high': return '1080p60';
+    case '4k': return '2160p60';
+  }
+}
+
+/**
+ * Find the output video file from manim render
+ * Searches for the requested quality first, then falls back to other qualities
+ */
+function findOutputVideo(
+  outputDir: string,
+  sceneName: string,
+  format: string,
+  quality: 'low' | 'medium' | 'high' | '4k'
+): string | null {
   // When using --media_dir=outputDir, manim outputs to outputDir/videos/ (not outputDir/media/videos/)
   const searchDirs = format === 'gif'
     ? [join(outputDir, 'videos'), join(outputDir, 'images')]
     : [join(outputDir, 'videos')];
+
+  // Determine the requested quality directory
+  const requestedQualityDir = qualityToDirName(quality);
+  // Fallback order: requested quality first, then others in descending order
+  const qualityDirs = ['2160p60', '1080p60', '720p30', '480p15'].filter(
+    (d) => d === requestedQualityDir || d !== requestedQualityDir
+  );
+  // Ensure requested quality is first
+  const orderedQualityDirs = [requestedQualityDir, ...qualityDirs.filter((d) => d !== requestedQualityDir)];
 
   for (const mediaDir of searchDirs) {
     if (!existsSync(mediaDir)) continue;
@@ -71,9 +98,8 @@ function findOutputVideo(outputDir: string, sceneName: string, format: string): 
       .map(d => d.name);
 
     for (const sceneDir of sceneDirs) {
-      const qualityDirs = ['480p15', '720p30', '1080p60', '2160p60'];
-
-      for (const qualityDir of qualityDirs) {
+      // Search requested quality first, then fall back
+      for (const qualityDir of orderedQualityDirs) {
         const ext = format === 'gif' ? '.gif' : format === 'png' ? '.png' : '.mp4';
         const videoPath = join(mediaDir, sceneDir, qualityDir, `${sceneName}${ext}`);
         if (existsSync(videoPath)) {
@@ -182,8 +208,12 @@ export class ManimExecutor {
 
     // Check cache first
     const cached = this.renderCache.get(cacheKey);
-    if (cached && existsSync(cached.videoPath || '')) {
-      return { ...cached, fromCache: true };
+    if (cached && cached.videoPath) {
+      // Use absolute path for existsSync check since videoPath is relative to vault root
+      const absoluteVideoPath = join(this.cacheDirAbs, cached.videoPath.split('/').pop() || '');
+      if (existsSync(absoluteVideoPath)) {
+        return { ...cached, fromCache: true };
+      }
     }
 
     // Check for pending render of same source
@@ -265,8 +295,8 @@ export class ManimExecutor {
       // Execute manim with spawn for progress tracking
       const result = await this.runManimWithProgress(command, args, options, cacheKey);
 
-      // Find output video
-      const videoPath = findOutputVideo(options.outputDir, sceneName, format);
+      // Find output video - pass quality to ensure correct quality directory is used
+      const videoPath = findOutputVideo(options.outputDir, sceneName, format, options.quality);
 
       if (!videoPath || !existsSync(videoPath)) {
         return {
