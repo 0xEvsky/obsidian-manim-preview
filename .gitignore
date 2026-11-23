@@ -24,3 +24,14 @@ coverage/
 
 # Obsidian plugin development
 .obsidian/
+
+# Cache and temp files
+cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test artifacts
+test_output*/
+test_scene.py
